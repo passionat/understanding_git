@@ -1,0 +1,37 @@
+name: Deploy to AWS Lightsail
+on:
+  pull_request:
+    types:
+      - closed
+    branches:
+      - master
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    if: github.event.pull_request.merged == true || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout the repository
+      uses: actions/checkout@v3
+    - name: Setup SSH key
+      env:
+        SSH_PRIVATE_KEY: ${{ secrets.LIGHTSAIL_SSH_KEY }}
+      run: |
+        mkdir -p ~/.ssh
+        echo "$SSH_PRIVATE_KEY" > ~/.ssh/lightsail_key
+        chmod 600 ~/.ssh/lightsail_key
+        ssh-keyscan -H ${{ secrets.LIGHTSAIL_HOST }} >> ~/.ssh/known_hosts
+    - name: Debug SSH connection
+      run: |
+        echo "Attempting to connect to ${{ secrets.LIGHTSAIL_HOST }}"
+        ssh -vvv -i ~/.ssh/lightsail_key -o StrictHostKeyChecking=no ${{ secrets.LIGHTSAIL_USER }}@${{ secrets.LIGHTSAIL_HOST }} 'echo "SSH connection successful"'
+    - name: Deploy to Lightsail
+      if: success()
+      run: |
+        ssh -i ~/.ssh/lightsail_key -o StrictHostKeyChecking=no ${{ secrets.LIGHTSAIL_USER }}@${{ secrets.LIGHTSAIL_HOST }} '
+          cd /var/www/html/practice_CI_CD &&
+          git fetch --all &&
+          git reset --hard origin/master &&
+          sudo systemctl restart httpd
+        '
